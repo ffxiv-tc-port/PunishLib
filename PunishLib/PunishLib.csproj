@@ -8,6 +8,11 @@
     <PropertyGroup>
         <TargetFramework>net9.0-windows7.0</TargetFramework>
         <Platforms>x64</Platforms>
+        <!-- AutoRetainer / Avarice / PalacePal 透過 PunishLib 取得 System.Windows.Forms
+             （它們原本各自釘在 921e378 / 2f5cdea / 570b57b，那三個 commit 都有這個屬性）。
+             2026-07-31 統一 pin 時基底選了沒有它的 4847ee8，導致那三個 repo 編譯失敗。
+             這個屬性對不需要 WinForms 的 repo 無害，補回來讓單一 pin 能服務全部消費端。 -->
+        <UseWindowsForms>true</UseWindowsForms>
         <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>

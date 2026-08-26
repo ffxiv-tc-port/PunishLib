@@ -17,6 +17,7 @@ using ECommons.ImGuiMethods;
 using Dalamud.Bindings.ImGui;
 using Newtonsoft.Json;
 using System;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -35,6 +36,12 @@ namespace PunishLib.ImGuiMethods
         private static bool disableTestButton = false;
         private static List<string> testedKeys = new();
         private static DalamudStartInfo startInfo;
+
+        // ⚠️ 「Test Key」原本寫成 `API.API.ValidateKey().Result`,直接在 Draw 的呼叫鏈上
+        // 阻塞主執行緒等 HTTP 回應。配上當時 HttpClient 沒有 Timeout(預設 100 秒),
+        // 按一次按鈕最壞會讓整個遊戲凍結 100 秒。
+        // 改成非阻塞:按下按鈕只負責發起工作,之後每幀檢查 IsCompleted 才收結果。
+        private static Task<bool>? apiTestTask = null;
         private static List<LocalPluginInfo> installedPluginInfo = new();
         private static Regex uuidPattern = new Regex("[a-fA-F\\d]{8}(?:\\-[a-fA-F\\d]{4}){3}\\-[a-fA-F\\d]{12}$");
 
@@ -209,7 +216,10 @@ namespace PunishLib.ImGuiMethods
 
                     ImGui.SameLine();
 
-                    if (disableTestButton)
+                    // 測試進行中時也把按鈕停用,避免重複發起。
+                    var testInFlight = apiTestTask is { IsCompleted: false };
+
+                    if (disableTestButton || testInFlight)
                         ImGui.BeginDisabled();
 
                     if (IconButtons.IconTextButton(FontAwesomeIcon.Question, "Test Key"))
@@ -219,22 +229,40 @@ namespace PunishLib.ImGuiMethods
                             if (!testedKeys.Any(x => x == PunishLibMain.SharedConfig.APIKey))
                             {
                                 testedKeys.Add(PunishLibMain.SharedConfig.APIKey);
-                                if (API.API.ValidateKey().Result)
-                                {
-                                    apiTestSuccess = true;
-                                    apiTestFail = false;
-                                }
-                                else
-                                {
-                                    apiTestSuccess = false;
-                                    apiTestFail = true;
-                                }
+                                // 只發起,不等待 —— 絕對不要在 Draw 路徑上 .Result / .Wait()。
+                                apiTestTask = API.API.ValidateKey();
                             }
                         }
                     }
 
-                    if (disableTestButton)
+                    if (disableTestButton || testInFlight)
                         ImGui.EndDisabled();
+
+                    if (testInFlight)
+                    {
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted("測試中…");
+                    }
+
+                    // 每幀檢查一次;完成之後才取結果,所以永遠不會阻塞。
+                    if (apiTestTask is { IsCompleted: true })
+                    {
+                        if (apiTestTask.IsCompletedSuccessfully && apiTestTask.Result)
+                        {
+                            apiTestSuccess = true;
+                            apiTestFail = false;
+                        }
+                        else
+                        {
+                            // 逾時、網路錯誤、或 API 回非 200 一律視為失敗。
+                            if (apiTestTask.Exception is { } ex)
+                                Svc.Log.Warning($"[PunishLib] API key 測試失敗:{ex.InnerException?.Message ?? ex.Message}");
+
+                            apiTestSuccess = false;
+                            apiTestFail = true;
+                        }
+                        apiTestTask = null;
+                    }
 
                     ImGui.End();
                 }

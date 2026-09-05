@@ -25,10 +25,7 @@
 
 ## 誰在用它
 
-艦隊裡 24 個插件消費：`Artisan`、`AutoDuty`、`AutoHook`、`AutoRetainer`、`Avarice`、`BOCCHI`、
-`ChilledLeves`、`EurekaHelper`、`Explorers-Icebox`、`GatherBuddyReborn`、`ICE`、`LazyLoot`、
-`Lifestream`、`NecroLens`、`NotificationMaster`、`PalacePal`、`Questionable`、`Saucy`、
-`SomethingNeedDoing`、`Splatoon`、`TextAdvance`、`WrathCombo`、`YesAlready`、`visland`。
+艦隊裡 8 個插件以子模組引用：`Artisan`、`AutoHook`、`AutoRetainer`、`Avarice`、`LazyLoot`、`PalacePal`、`Saucy`、`WrathCombo`。
 
 ---
 

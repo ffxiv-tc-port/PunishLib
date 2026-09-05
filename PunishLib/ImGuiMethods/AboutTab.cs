@@ -90,7 +90,12 @@ namespace PunishLib.ImGuiMethods
                 ImGui.SameLine();
                 if (ImGui.Button("Repository"))
                 {
-                    ImGui.SetClipboardText("https://love.puni.sh/ment.json");
+                    // 🔴 這裡絕對不能指國際服的外掛庫：本函式庫被 8 個台服外掛引用
+                    //（Artisan / AutoHook / AutoRetainer / Avarice / LazyLoot / PalacePal /
+                    //  Saucy / WrathCombo），那些外掛在國際服庫裡的內部名與台服版完全相同，
+                    //  使用者複製這個網址加進去會裝到 API15/net10 的版本，在台服的 API13
+                    //  Dalamud 上載不起來，而且會撞掉台服版的已安裝鍵。
+                    ImGui.SetClipboardText("https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json");
                     Notify.Success("Link copied to clipboard");
                 }
                 if (Svc.PluginInterface.Manifest.RepoUrl != null)

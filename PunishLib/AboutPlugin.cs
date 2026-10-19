@@ -15,6 +15,12 @@ namespace PunishLib
         public string Sponsor { get; set; }
         public string Developer { get; set; }
 
+        /// <summary>
+        /// 關於分頁圖示的本地檔路徑；不設（null）時沿用 manifest 的 IconUrl。
+        /// 外掛庫是私有 repo 時，那個 raw 網址不帶 token 一律 404，圖示畫不出來。
+        /// </summary>
+        public string IconPath { get; set; }
+
         internal Action WithLoveBy => Developer == null ? WithLoveByPunish : WithLoveByOther;
 
         static void WithLoveByPunish()

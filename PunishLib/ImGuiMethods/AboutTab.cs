@@ -17,6 +17,7 @@ using ECommons.ImGuiMethods;
 using Dalamud.Bindings.ImGui;
 using Newtonsoft.Json;
 using System;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -35,12 +36,17 @@ namespace PunishLib.ImGuiMethods
         private static bool disableTestButton = false;
         private static List<string> testedKeys = new();
         private static DalamudStartInfo startInfo;
+
+        // ⚠️ 「Test Key」不可以寫成 API.API.ValidateKey().Result:那會直接在 Draw 的呼叫鏈上
+        // 阻塞主執行緒等 HTTP 回應,網路不通時整個遊戲凍結到逾時為止。
+        // 非阻塞:按下按鈕只負責發起工作,之後每幀檢查 IsCompleted 才收結果。
+        private static Task<bool>? apiTestTask = null;
         private static List<LocalPluginInfo> installedPluginInfo = new();
         private static Regex uuidPattern = new Regex("[a-fA-F\\d]{8}(?:\\-[a-fA-F\\d]{4}){3}\\-[a-fA-F\\d]{12}$");
 
         static string GetImageURL()
         {
-            return Svc.PluginInterface.Manifest.IconUrl ?? "";
+            return PunishLibMain.About?.IconPath ?? Svc.PluginInterface.Manifest.IconUrl ?? "";
         }
 
         public static void Draw(string pluginName)
@@ -83,7 +89,12 @@ namespace PunishLib.ImGuiMethods
                 ImGui.SameLine();
                 if (ImGui.Button("Repository"))
                 {
-                    ImGui.SetClipboardText("https://love.puni.sh/ment.json");
+                    // 🔴 這裡絕對不能指國際服的外掛庫：本函式庫被 8 個台服外掛引用
+                    //（Artisan / AutoHook / AutoRetainer / Avarice / LazyLoot / PalacePal /
+                    //  Saucy / WrathCombo），那些外掛在國際服庫裡的內部名與台服版完全相同，
+                    //  使用者複製這個網址加進去會裝到 API15/net10 的版本，在台服的 API13
+                    //  Dalamud 上載不起來，而且會撞掉台服版的已安裝鍵。
+                    ImGui.SetClipboardText("https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/repo.json");
                     Notify.Success("Link copied to clipboard");
                 }
                 if (Svc.PluginInterface.Manifest.RepoUrl != null)
@@ -209,7 +220,10 @@ namespace PunishLib.ImGuiMethods
 
                     ImGui.SameLine();
 
-                    if (disableTestButton)
+                    // 測試進行中時也把按鈕停用,避免重複發起。
+                    var testInFlight = apiTestTask is { IsCompleted: false };
+
+                    if (disableTestButton || testInFlight)
                         ImGui.BeginDisabled();
 
                     if (IconButtons.IconTextButton(FontAwesomeIcon.Question, "Test Key"))
@@ -219,22 +233,40 @@ namespace PunishLib.ImGuiMethods
                             if (!testedKeys.Any(x => x == PunishLibMain.SharedConfig.APIKey))
                             {
                                 testedKeys.Add(PunishLibMain.SharedConfig.APIKey);
-                                if (API.API.ValidateKey().Result)
-                                {
-                                    apiTestSuccess = true;
-                                    apiTestFail = false;
-                                }
-                                else
-                                {
-                                    apiTestSuccess = false;
-                                    apiTestFail = true;
-                                }
+                                // 只發起,不等待 —— 絕對不要在 Draw 路徑上 .Result / .Wait()。
+                                apiTestTask = API.API.ValidateKey();
                             }
                         }
                     }
 
-                    if (disableTestButton)
+                    if (disableTestButton || testInFlight)
                         ImGui.EndDisabled();
+
+                    if (testInFlight)
+                    {
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted("測試中…");
+                    }
+
+                    // 每幀檢查一次;完成之後才取結果,所以永遠不會阻塞。
+                    if (apiTestTask is { IsCompleted: true })
+                    {
+                        if (apiTestTask.IsCompletedSuccessfully && apiTestTask.Result)
+                        {
+                            apiTestSuccess = true;
+                            apiTestFail = false;
+                        }
+                        else
+                        {
+                            // 逾時、網路錯誤、或 API 回非 200 一律視為失敗。
+                            if (apiTestTask.Exception is { } ex)
+                                Svc.Log.Warning($"[PunishLib] API key 測試失敗:{ex.InnerException?.Message ?? ex.Message}");
+
+                            apiTestSuccess = false;
+                            apiTestFail = true;
+                        }
+                        apiTestTask = null;
+                    }
 
                     ImGui.End();
                 }

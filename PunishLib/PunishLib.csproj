@@ -8,6 +8,11 @@
     <PropertyGroup>
         <TargetFramework>net9.0-windows7.0</TargetFramework>
         <Platforms>x64</Platforms>
+        <!-- AutoRetainer / Avarice / PalacePal 透過 PunishLib 取得 System.Windows.Forms
+             （它們原本各自釘在 921e378 / 2f5cdea / 570b57b，那三個 commit 都有這個屬性）。
+             2026-07-31 統一 pin 時基底選了沒有它的 4847ee8，導致那三個 repo 編譯失敗。
+             這個屬性對不需要 WinForms 的 repo 無害，補回來讓單一 pin 能服務全部消費端。 -->
+        <UseWindowsForms>true</UseWindowsForms>
         <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
@@ -25,8 +30,38 @@
         <DalamudLibPath Condition="$(DALAMUD_HOME) != ''">$(DALAMUD_HOME)/</DalamudLibPath>
     </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="ECommons" Version="3.0.1.10" />
+    <!-- 🔴 ECommons 的來源必須跟消費端一致，否則會靜默換回「未加固」的 NuGet 版本。
+         PunishLib 被 8 個外掛以子模組引入（Artisan / AutoHook / AutoRetainer / Avarice /
+         LazyLoot / PalacePal / Saucy / WrathCombo），在那些 repo 的樹裡本檔的位置是
+         <消費端>/PunishLib/PunishLib/PunishLib.csproj，所以 ..\..\ECommons\ECommons\ECommons.csproj
+         正好是消費端自己的 ECommons 子模組（＝艦隊加固過的 fork）。
+
+         這裡原本是**無條件**的 PackageReference，靠「fork 的版本號 >= 套件版本號」
+         讓 NuGet 選 ProjectReference 蓋掉它。那是**版本序依賴**的隱性機制：
+         fork 的 BaseVersion 一旦低於下面那個 Version，8 個外掛就會靜默改吃未加固的
+         NuGet ECommons —— 建置完全不報錯，只有實機才看得出差別。
+
+         改成兩者互斥之後就不再依賴版本比較：樹裡有 ECommons 專案就走 ProjectReference，
+         沒有（單獨 clone 本 repo、或 CI）才退回 NuGet 套件。 -->
+    <PropertyGroup>
+        <ECommonsProjectPath>$(MSBuildThisFileDirectory)..\..\ECommons\ECommons\ECommons.csproj</ECommonsProjectPath>
+        <UseECommonsProjectReference Condition="Exists('$(ECommonsProjectPath)')">true</UseECommonsProjectReference>
+
+        <!-- 走 ProjectReference 時把 lock 檔改寫到 obj\ 底下，不要動版控裡那份。
+             committed 的 packages.lock.json 只記著 NuGet ECommons 那一筆，對
+             ProjectReference 分支毫無意義；若讓它照預設路徑產生，8 個消費端每次建置
+             都會把子模組裡的 packages.lock.json 改寫成空的相依集合 → 永遠的髒檔。
+             ⚠️ 這裡不能改用 RestorePackagesWithLockFile=false：版控裡已經有 lock 檔時
+             NuGet 會直接以 NU1005 中止還原（實測過）。 -->
+        <NuGetLockFilePath Condition="'$(UseECommonsProjectReference)' == 'true'">$(MSBuildThisFileDirectory)obj\packages.lock.json</NuGetLockFilePath>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(UseECommonsProjectReference)' == 'true'">
+        <ProjectReference Include="$(ECommonsProjectPath)" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseECommonsProjectReference)' != 'true'">
+        <PackageReference Include="ECommons" Version="3.0.1.10" />
     </ItemGroup>
 
     <ItemGroup>
